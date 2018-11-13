@@ -6,111 +6,153 @@ from collections import deque
 from time import sleep
 
 
-def makePayload(p):
-    """
-    p: dict
-    return: クエリストリング
-    クエリストリング作成
-    """
-
-    res = '?'
-    for item in p:
-        res += item + '=' + p[item] + '&'
-    return res
+yahoo = 'https://search.yahoo.co.jp/search'
 
 
-def getURLs(word, save=False):
-    """
-    word: 検索単語
-    save: URLを保存するかどうか
+def rmPrint(n):
+    '''
+    n: n行上の出力を削除
+    '''
+    sys.stdout.write('\033[' + str(n) + 'F\033[2K\033[G')
+
+
+def checkResponse(r):
+    '''
+    r: レスポンス
+    HTTPステータスコードのチェック
+    '''
+    if r.status_code == requests.codes.ok:
+        return True
+    else:
+        print('Error: HTTP status code is', r.status_code)
+        if r.status_code == 999:
+            sleep(60 * 60)
+        else:
+            sleep(60)
+    return False
+
+
+def httpGet(url, params={}, must=False):
+    '''
+    url: URL
+    params: URLパラメータ
+    must: HTTPステータスコードがOKになるまでリクエスト
+    return: レスポンス
+    '''
+
+    i = 0
+    while must or i < 5:
+        r = requests.get(url, params=params)
+        if checkResponse(r):
+            return r
+        i += 1
+    print('Error: Skipped because of failed 5 times')
+    return None
+
+
+def getURLs(params):
+    '''
+    params: 検索パラメータ
     return: URL
     Yahooで検索したページのURLを取得
-    """
+    '''
 
-    print('Start getURLs')
-    param = {
-        'p': word,
-        'b': '01'
-    }
-    r = requests.get('https://search.yahoo.co.jp/search' + makePayload(param))
-    soup = BeautifulSoup(r.text, 'html.parser')
+    res = httpGet(yahoo, params=params, must=True)
+    soup = BeautifulSoup(res.text, 'lxml')
 
-    urls = deque([])
-    flag = True
-    if save:
-        f = open('./urls.txt', 'w')
-    while flag:
-        flag = False
-        for a in soup.findAll('a'):
-            url = a.get('href')
-            if 'http' in url and 'yahoo' not in url:
-                urls.append(url)
-                if save:
-                    f.write(url + '\n')
-                flag = True
-
-        print('Num of URLs:', len(urls))
-        sleep(3)
-        param['b'] = str(int(param['b']) + 10)
-        r = requests.get(
-            'https://search.yahoo.co.jp/search' + makePayload(param))
-        soup = BeautifulSoup(r.text, 'html.parser')
-    if save:
-        f.close()
-    print('Finish getURLs')
-    return urls
-
-
-def loadURLs():
-    """
-    return: URL
-    URL読み込み
-    """
-
-    urls = deque([])
-    with open('./urls.txt', 'r') as f:
-        for url in f.readlines():
-            urls.append(re.sub(r'\n', '', url))
+    web = soup.find('div', id='web')
+    urls = deque([a.get('href') for a in web.findAll('a')])
+    print('Num of URLs:', len(urls))
     return urls
 
 
 def getText(urls, path):
-    """
+    '''
     urls: Yahoo検索でヒットしたページのURL
     path: WEBテキストの保存ファイル
-    """
+    ページの本文を取得
+    '''
 
-    print('Start getText')
-    with open(path, 'w') as f:
+    n = len(urls)
+    print('')
+    with open(path, 'a') as f:
         while urls:
             url = urls.popleft()
-            print(len(urls))
+            rmPrint(1)
+            print(n - len(urls), '/', n)
             try:
-                r = requests.get(url)
-                if 'html' in r.headers['Content-Type']:
-                    r.encoding = r.apparent_encoding
-                    soup = BeautifulSoup(r.text, 'lxml')
+                res = httpGet(url)
+                if not res:
+                    continue
+
+                # 本文の抽出
+                if 'html' in res.headers['Content-Type']:
+                    res.encoding = res.apparent_encoding
+                    soup = BeautifulSoup(res.text, 'lxml')
                     [x.extract() for x in soup.findAll('script')]
                     [x.extract() for x in soup.findAll('style')]
-                    text = re.sub(r'(\n)\1{2,}', '\n', soup.getText())
-                    f.write(text)
-            except requests.exceptions.SSLError as e:
+                    text = re.sub(r'[ \t]+', '', soup.getText())
+                    text = re.sub(r'[\r\n]+', '/', text)
+                    f.write(text + '\n')
+            except requests.exceptions.SSLError:
+                rmPrint(1)
                 print('SSL Error によりスキップ')
-                continue
-            sleep(1)
-    print('Finish getText')
+            except:
+                rmPrint(1)
+                print('Error: Exception')
+            sleep(10)
+
+
+def crawl(kw):
+    '''
+    kw: 検索ワード
+    クローリング
+    '''
+
+    print('Start')
+
+    path = './Corpora/' + kw + '.txt'
+    with open(path, 'w') as f:
+        f.write('')
+
+    params = {
+        'p': kw,
+        'ei': 'UTF-8',
+        'fl': str(2),
+        'dups': str(1),
+        'b': '01'
+    }
+    while True:
+        print('Page:', int(params['b']) // 10 + 1)
+
+        # Yahoo検索ページのURLを取得
+        urls = getURLs(params)
+        if not urls:
+            break
+        sleep(10)
+
+        # 本文抽出
+        getText(urls, path)
+
+        # 次のページへ
+        params['b'] = str(int(params['b']) + 10)
+        rmPrint(3)
+
+    print('Finish')
+
 
 if __name__ == '__main__':
     args = sys.argv
     if len(args) < 2:
         print('Error: 引数が足りません')
-        print('ex. python crawl.py 食事 ./Eating_Crawl.txt')
+        print('ex. python crawl.py 食事')
         exit(0)
 
-    if len(args) < 4:
-        urls = getURLs(args[1])
-        getText(urls, args[2])
-    else:
-        urls = getURLs(args[1], True)
-        urls = loadURLs()
-        getText(urls, args[2])
+    keyword = args[1]
+
+    # 検索ワードでクローリング
+    crawl(keyword)
+    # 検索ワード+道具でクローリング
+    crawl(keyword + '+道具')
+    # 検索ワード+方法でクローリング
+    crawl(keyword + '+方法')
