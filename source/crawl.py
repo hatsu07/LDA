@@ -53,7 +53,8 @@ def getURLs(params):
     soup = BeautifulSoup(res.text, 'lxml')
 
     web = soup.find('div', id='web')
-    urls = deque([(a.get('href'), 0) for a in web.findAll('a')])
+    urls = deque([(a.get('href'), 0)
+                  for a in web.findAll('a') if 'yahoo' not in str(a)])
     print('Num of URLs:', len(urls))
     return urls
 
@@ -68,6 +69,7 @@ def getText(urls, path):
     n = len(urls)
     print('')
     sys.stdout.write('\033[2K\033[G')
+
     with open(path, 'a') as f:
         while urls:
             url = urls.popleft()
