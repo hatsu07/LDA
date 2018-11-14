@@ -6,6 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 from collections import deque
 from time import sleep
+import random
 
 
 yahoo = 'https://search.yahoo.co.jp/search'
@@ -18,24 +19,7 @@ def rmPrint(n):
     sys.stdout.write('\033[' + str(n) + 'F\033[2K\033[G')
 
 
-def checkResponse(r):
-    '''
-    r: レスポンス
-    HTTPステータスコードのチェック
-    '''
-    if r.status_code == requests.codes.ok:
-        return True
-    else:
-        rmPrint(1)
-        print('Error: HTTP status code is', r.status_code)
-        if r.status_code == 999:
-            sleep(60 * 60)
-        else:
-            sleep(60)
-    return False
-
-
-def httpGet(url, params={}, must=False):
+def httpGet(url, params={}):
     '''
     url: URL
     params: URLパラメータ
@@ -43,29 +27,33 @@ def httpGet(url, params={}, must=False):
     return: レスポンス
     '''
 
-    i = 0
-    while must or i < 5:
-        r = requests.get(url, params=params)
-        if checkResponse(r):
-            return r
-        i += 1
+    r = requests.get(url, params=params)
+    if r.status_code == requests.codes.ok:
+        return r
     rmPrint(1)
-    print('Error: Skipped because of failed 5 times')
+    print('Error: HTTP status code is', r.status_code)
     return None
 
 
 def getURLs(params):
     '''
     params: 検索パラメータ
-    return: URL
+    return: URL: (url, エラー回数)
     Yahooで検索したページのURLを取得
     '''
 
-    res = httpGet(yahoo, params=params, must=True)
+    while True:
+        res = httpGet(yahoo, params=params)
+        if res:
+            break
+        rmPrint(1)
+        print('Error: Waiting to request Yahoo')
+        sleep(60 * 60)
+
     soup = BeautifulSoup(res.text, 'lxml')
 
     web = soup.find('div', id='web')
-    urls = deque([a.get('href') for a in web.findAll('a')])
+    urls = deque([(a.get('href'), 0) for a in web.findAll('a')])
     print('Num of URLs:', len(urls))
     return urls
 
@@ -79,18 +67,23 @@ def getText(urls, path):
 
     n = len(urls)
     print('')
+    sys.stdout.write('\033[2K\033[G')
     with open(path, 'a') as f:
         while urls:
             url = urls.popleft()
             rmPrint(1)
             print(n - len(urls), '/', n)
             try:
-                res = httpGet(url)
+                res = httpGet(url[0])
                 if not res:
-                    continue
+                    if url[1] > 3:
+                        continue
+                    rmPrint(1)
+                    print('Error: Skipped because of failed Request')
+                    urls.append((url[0], url[1] + 1))
 
                 # 本文の抽出
-                if 'html' in res.headers['Content-Type']:
+                elif 'html' in res.headers['Content-Type']:
                     res.encoding = res.apparent_encoding
                     soup = BeautifulSoup(res.text, 'lxml')
                     [x.extract() for x in soup.findAll('script')]
@@ -104,7 +97,7 @@ def getText(urls, path):
             except:
                 rmPrint(1)
                 print('Error: Exception')
-            sleep(10)
+            sleep(random.randint(3, 10))
 
 
 def crawl(kw):
@@ -127,12 +120,13 @@ def crawl(kw):
     }
     while True:
         print('Page:', int(params['b']) // 10 + 1)
+        sys.stdout.write('\033[2K\033[G')
 
         # Yahoo検索ページのURLを取得
         urls = getURLs(params)
         if not urls:
             break
-        sleep(10)
+        sleep(random.randint(5, 50))
 
         # 本文抽出
         getText(urls, path)
