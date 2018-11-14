@@ -123,7 +123,6 @@ def crawl(kw):
         'p': kw,
         'ei': 'UTF-8',
         'fl': str(2),
-        'dups': str(1),
         'b': '01'
     }
     while True:
