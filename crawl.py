@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import sys
 import re
 import requests
@@ -24,6 +26,7 @@ def checkResponse(r):
     if r.status_code == requests.codes.ok:
         return True
     else:
+        rmPrint(1)
         print('Error: HTTP status code is', r.status_code)
         if r.status_code == 999:
             sleep(60 * 60)
@@ -46,6 +49,7 @@ def httpGet(url, params={}, must=False):
         if checkResponse(r):
             return r
         i += 1
+    rmPrint(1)
     print('Error: Skipped because of failed 5 times')
     return None
 
@@ -119,7 +123,6 @@ def crawl(kw):
         'p': kw,
         'ei': 'UTF-8',
         'fl': str(2),
-        'dups': str(1),
         'b': '01'
     }
     while True:
