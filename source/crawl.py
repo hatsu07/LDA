@@ -19,20 +19,20 @@ def rmPrint(n):
     sys.stdout.write('\033[' + str(n) + 'F\033[2K\033[G')
 
 
-def httpGet(url, params={}):
-    '''
-    url: URL
-    params: URLパラメータ
-    must: HTTPステータスコードがOKになるまでリクエスト
-    return: レスポンス
-    '''
+# def httpGet(url, params={}):
+#     '''
+#     url: URL
+#     params: URLパラメータ
+#     must: HTTPステータスコードがOKになるまでリクエスト
+#     return: レスポンス
+#     '''
 
-    r = requests.get(url, params=params)
-    if r.status_code == requests.codes.ok:
-        return r
-    rmPrint(1)
-    print('Error: HTTP status code is', r.status_code)
-    return None
+#     r = requests.get(url, params=params)
+#     if r.status_code == requests.codes.ok:
+#         return r
+#     rmPrint(1)
+#     print('Error: HTTP status code is', r.status_code)
+#     return None
 
 
 def getURLs(params):
@@ -43,19 +43,22 @@ def getURLs(params):
     '''
 
     while True:
-        res = httpGet(yahoo, params=params)
-        if res:
+        res = requests.get(yahoo, params=params)
+        # res = httpGet(yahoo, params=params)
+        if res.status_code == requests.codes.ok:
             break
         rmPrint(1)
-        print('Error: Waiting to request Yahoo')
+        print('Error ' + str(res.status_code) + ': Waiting to request Yahoo')
         sleep(60 * 60)
 
     soup = BeautifulSoup(res.text, 'lxml')
 
     web = soup.find('div', id='web')
     urls = deque([(a.get('href'), 0)
-                  for a in web.findAll('a') if 'yahoo' not in str(a)])
+                  for a in web.findAll('a') if 'yahoo' not in str(a)]
+                 )
     print('Num of URLs:', len(urls))
+    sys.stdout.write('\033[2K\033[G')
     return urls
 
 
@@ -68,7 +71,6 @@ def getText(urls, path):
 
     n = len(urls)
     print('')
-    sys.stdout.write('\033[2K\033[G')
 
     with open(path, 'a') as f:
         while urls:
@@ -76,16 +78,18 @@ def getText(urls, path):
             rmPrint(1)
             print(n - len(urls), '/', n)
             try:
-                res = httpGet(url[0])
-                if not res:
-                    if url[1] > 3:
-                        continue
+                res = requests.get(url[0])
+                # res = httpGet(url[0])
+                if res.status_code != requests.codes.ok:
+                    # if not res:
                     rmPrint(1)
-                    print('Error: Skipped because of failed Request')
-                    urls.append((url[0], url[1] + 1))
-
-                # 本文の抽出
+                    print('Error ' + str(res.status_code) +
+                          ': Skipped because of failed Request'
+                          )
+                    if url[1] < 3:
+                        urls.append((url[0], url[1] + 1))
                 elif 'html' in res.headers['Content-Type']:
+                    # 本文の抽出
                     res.encoding = res.apparent_encoding
                     soup = BeautifulSoup(res.text, 'lxml')
                     [x.extract() for x in soup.findAll('script')]
@@ -108,7 +112,7 @@ def crawl(kw):
     クローリング
     '''
 
-    print('Start')
+    print('Start crawl', kw)
 
     path = './Corpora/' + kw + '.txt'
     with open(path, 'w') as f:
