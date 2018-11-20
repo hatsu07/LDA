@@ -19,22 +19,6 @@ def rmPrint(n):
     sys.stdout.write('\033[' + str(n) + 'F\033[2K\033[G')
 
 
-# def httpGet(url, params={}):
-#     '''
-#     url: URL
-#     params: URLパラメータ
-#     must: HTTPステータスコードがOKになるまでリクエスト
-#     return: レスポンス
-#     '''
-
-#     r = requests.get(url, params=params)
-#     if r.status_code == requests.codes.ok:
-#         return r
-#     rmPrint(1)
-#     print('Error: HTTP status code is', r.status_code)
-#     return None
-
-
 def getURLs(params):
     '''
     params: 検索パラメータ
@@ -44,15 +28,13 @@ def getURLs(params):
 
     while True:
         res = requests.get(yahoo, params=params)
-        # res = httpGet(yahoo, params=params)
         if res.status_code == requests.codes.ok:
             break
         rmPrint(1)
         print('Error ' + str(res.status_code) + ': Waiting to request Yahoo')
-        sleep(60 * 60)
+        sleep(60 * random.randint(30, 60))
 
     soup = BeautifulSoup(res.text, 'lxml')
-
     web = soup.find('div', id='web')
     urls = deque([(a.get('href'), 0)
                   for a in web.findAll('a') if 'yahoo' not in str(a)]
@@ -79,14 +61,12 @@ def getText(urls, path):
             print(n - len(urls), '/', n)
             try:
                 res = requests.get(url[0])
-                # res = httpGet(url[0])
                 if res.status_code != requests.codes.ok:
-                    # if not res:
                     rmPrint(1)
                     print('Error ' + str(res.status_code) +
                           ': Skipped because of failed Request'
                           )
-                    if url[1] < 3:
+                    if url[1] < 2:
                         urls.append((url[0], url[1] + 1))
                 elif 'html' in res.headers['Content-Type']:
                     # 本文の抽出
@@ -95,7 +75,7 @@ def getText(urls, path):
                     [x.extract() for x in soup.findAll('script')]
                     [x.extract() for x in soup.findAll('style')]
                     text = re.sub(r'[ \t]+', '', soup.getText())
-                    text = re.sub(r'[\r\n]+', '/', text)
+                    text = re.sub(r'[\r\n]+', '/n/', text)  # 改行コードを/n/に変更
                     f.write(text + '\n')
             except requests.exceptions.SSLError:
                 rmPrint(1)
@@ -154,8 +134,10 @@ if __name__ == '__main__':
     keyword = args[1]
 
     # 検索ワードでクローリング
-    crawl(keyword)
+    # crawl(keyword)
+
     # 検索ワード+道具でクローリング
     crawl(keyword + '+道具')
+
     # 検索ワード+方法でクローリング
     crawl(keyword + '+方法')
